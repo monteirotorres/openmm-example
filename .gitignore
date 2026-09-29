@@ -1,0 +1,9 @@
+# Saídas de simulação (geradas pelo notebook)
+md_1L2Y/
+*.xtc
+*.dcd
+*.chk
+*.csv
+*_executed.ipynb
+.ipynb_checkpoints/
+__pycache__/
