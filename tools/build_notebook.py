@@ -109,6 +109,7 @@ code(r"""
 PDB_ID = "1L2Y"          # Trp-cage TC5b, ensemble de RMN com 38 modelos
 NMR_MODEL = 0            # índice (base 0) do modelo do ensemble a usar (0 = modelo 1)
 PH = 7.0                 # pH usado pelo PDBFixer para escolher estados de protonação
+STRIP_HYDROGENS = True   # remover os H do arquivo de entrada antes do PDBFixer (ver Seção 4)
 
 # ----- Campo de força (arquivos XML incluídos no OpenMM; veja a lista na Seção 2) ---
 FF_PROTEIN = "amber14/protein.ff14SB.xml"   # Amber ff14SB (Maier et al. 2015)
@@ -426,7 +427,10 @@ def show_structure(pdb_path, style="cartoon+sticks", width=640, height=420,
     with open(pdb_path) as fh:
         pdb_text = fh.read()
     view = py3Dmol.view(width=width, height=height)
-    view.addModel(pdb_text, "pdb")
+    # keepH=True é essencial: por padrão o 3Dmol.js DESCARTA os hidrogênios ao ler um PDB.
+    # Sem eles, (i) os H da proteína não aparecem e (ii) cada água vira um único O sem
+    # ligações, e o estilo "line" (que desenha ligações) não mostra nada.
+    view.addModel(pdb_text, "pdb", {"keepH": True})
     # Proteína: fita colorida por índice de resíduo (do azul, N-terminal, ao vermelho, C-terminal)
     view.setStyle({"resn": ["HOH", "WAT", "NA", "CL", "Na+", "Cl-"], "invert": True},
                   {"cartoon": {"color": "spectrum"}})
@@ -436,7 +440,7 @@ def show_structure(pdb_path, style="cartoon+sticks", width=640, height=420,
     # Destaque do Trp6, o resíduo que dá nome à "gaiola de triptofano"
     view.addStyle({"resn": "TRP"}, {"stick": {"radius": 0.3, "colorscheme": "magentaCarbon"}})
     if show_water:
-        view.addStyle({"resn": ["HOH", "WAT"]}, {"line": {"opacity": 0.5}})
+        view.addStyle({"resn": ["HOH", "WAT"]}, {"line": {}})   # ligações O–H como linhas finas
     if show_ions:
         view.addStyle({"resn": ["NA", "CL"]}, {"sphere": {"radius": 0.8}})
     if show_box:
@@ -444,7 +448,7 @@ def show_structure(pdb_path, style="cartoon+sticks", width=640, height=420,
     view.zoomTo()
     return view.show()
 
-print("Modelo 1 de 1L2Y, direto do RCSB (com os hidrogênios do refinamento de RMN):")
+print("Modelo 1 de 1L2Y, direto do RCSB. Os bastões finos brancos são os hidrogênios do refinamento de RMN:")
 show_structure(model_pdb)
 """)
 
@@ -457,11 +461,16 @@ resolvidas), átomos de cadeia lateral, hidrogênios (em cristalografia quase se
 podem conter resíduos não-padrão ou heteroátomos (ligantes, íons cristalográficos). O
 [PDBFixer](https://github.com/openmm/pdbfixer) [16] resolve cada caso com uma chamada.
 
-Para 1L2Y (RMN) esperamos **nenhum** resíduo ou átomo pesado faltante; os hidrogênios já
-existem, mas mesmo assim chamamos `addMissingHydrogens(pH)`: ela mantém os H existentes, adiciona
-os que faltarem e escolhe o **estado de protonação** de cada resíduo ionizável para o pH dado
-(Asp/Glu desprotonados, Lys/Arg protonados, His conforme a rede de ligações de H). Imprimimos o
-relatório de cada etapa para deixar registrado o que foi (e o que não foi) alterado.
+Para 1L2Y (RMN) esperamos **nenhum** resíduo ou átomo pesado faltante. Os hidrogênios, porém,
+merecem atenção: estruturas de RMN já os trazem (150 H em 1L2Y), e `addMissingHydrogens` **mantém
+os que existem** e só acrescenta os que faltam. Estruturas cristalográficas, o caso mais comum, não
+têm H nenhum. Para que este exemplo cubra o caso geral e para que fique **demonstrado** que os
+hidrogênios são de fato adicionados, com `STRIP_HYDROGENS = True` removemos todos os H do arquivo
+de entrada antes de chamar o PDBFixer. Ele então recoloca cada um deles com geometria padrão e
+escolhe o **estado de protonação** de cada resíduo ionizável para o pH dado (Asp/Glu
+desprotonados, Lys/Arg protonados, His conforme a rede de ligações de H, N-terminal NH₃⁺ e
+C-terminal COO⁻). Contamos os átomos por elemento antes e depois, para que a mudança seja
+verificável, e imprimimos o relatório de cada etapa.
 """)
 
 code(r"""
@@ -469,9 +478,27 @@ code(r"""
 # Seção 4 — PDBFixer: completar e protonar a estrutura
 # =============================================================================
 from pdbfixer import PDBFixer
+from collections import Counter
 
-fixer = PDBFixer(filename=str(model_pdb))
+def count_elements(topology):
+    # Dicionário {símbolo do elemento: número de átomos}, ex. {'C': 98, 'H': 150, ...}
+    return dict(sorted(Counter(a.element.symbol for a in topology.atoms()).items()))
+
+# (0) Opcional: remover os hidrogênios do arquivo de entrada (simula o caso cristalográfico).
+input_pdb = model_pdb
+if STRIP_HYDROGENS:
+    m = app.Modeller(pdb_all.topology, pdb_all.getPositions(frame=NMR_MODEL))
+    m.delete([a for a in m.topology.atoms() if a.element is not None and a.element.symbol == "H"])
+    input_pdb = OUT / f"{PDB_ID}_model{NMR_MODEL + 1}_noH.pdb"
+    with open(input_pdb, "w") as fh:
+        app.PDBFile.writeFile(m.topology, m.positions, fh, keepIds=True)
+    print(f"Hidrogênios removidos do modelo: {pdb_all.topology.getNumAtoms()} → "
+          f"{m.topology.getNumAtoms()} átomos ({input_pdb.name})")
+
+fixer = PDBFixer(filename=str(input_pdb))
 n_atoms_in = fixer.topology.getNumAtoms()
+elements_in = count_elements(fixer.topology)
+print("Composição de entrada :", elements_in)
 
 # (1) Resíduos ausentes: compara SEQRES (sequência depositada) com os resíduos resolvidos.
 fixer.findMissingResidues()
@@ -500,16 +527,29 @@ fixed_pdb = OUT / f"{PDB_ID}_fixed.pdb"
 with open(fixed_pdb, "w") as fh:
     app.PDBFile.writeFile(fixer.topology, fixer.positions, fh, keepIds=True)
 
-# Relatório final: contagem de átomos e estados de protonação escolhidos
+# Relatório final: contagem de átomos por elemento e estados de protonação escolhidos
 n_atoms_out = fixer.topology.getNumAtoms()
+elements_out = count_elements(fixer.topology)
 print(f"\nÁtomos: {n_atoms_in} (entrada) → {n_atoms_out} (após PDBFixer)")
+print("Composição de saída   :", elements_out)
+n_h_added = elements_out.get("H", 0) - elements_in.get("H", 0)
+print(f"Hidrogênios adicionados pelo PDBFixer: {n_h_added}")
+if n_h_added == 0:
+    print("  (nenhum H adicionado: o arquivo de entrada já tinha todos os hidrogênios)")
+# Exemplo concreto: os H ligados ao N do primeiro resíduo (N-terminal). Em pH 7 esperamos 3 (NH3+).
+first_res = next(fixer.topology.residues())
+n_term_h = [a.name for a in first_res.atoms() if a.element.symbol == "H"
+            and any(b[0].name == "N" or b[1].name == "N" for b in fixer.topology.bonds()
+                    if a in b and (b[0].residue is first_res and b[1].residue is first_res))]
+print(f"H ligados ao N do {first_res.name}{first_res.id} (N-terminal): {n_term_h}")
 print("Resíduos após o preparo (nomes indicam variantes de protonação, ex. HID/HIE/HIP, ASH, GLH, LYN):")
 print("  " + " ".join(f"{r.name}{r.id}" for r in fixer.topology.residues()))
 print("Gravado em", fixed_pdb)
 """)
 
 code(r"""
-# Proteína preparada (agora com todos os hidrogênios definidos pelo PDBFixer).
+# Proteína preparada. Compare com a visualização da Seção 3: os bastões finos brancos são os
+# hidrogênios recolocados pelo PDBFixer (o viewer os mantém graças a keepH=True).
 show_structure(fixed_pdb)
 """)
 
@@ -553,13 +593,28 @@ modeller.addSolvent(
 )
 print(f"Solvatação em {time.time() - t0:.1f} s")
 
+# ----- Centralizar o sistema na caixa ---------------------------------------------
+# Convenção do OpenMM: a caixa periódica vai da origem (0,0,0) até os vetores a, b, c.
+# addSolvent centra a água em torno do SOLUTO (que está onde o PDB o deixou, aqui perto da
+# origem), e não em torno do centro da caixa. Fisicamente é irrelevante (o sistema é periódico),
+# mas ao desenhar a célula unitária a proteína apareceria num canto, e ao re-embrulhar as
+# moléculas (enforcePeriodicBox) ela ficaria na borda. Transladamos tudo para que o centro da
+# caixa envolvente da proteína coincida com o centro da caixa periódica.
+box_vectors = modeller.topology.getPeriodicBoxVectors()
+box_center = 0.5 * (box_vectors[0] + box_vectors[1] + box_vectors[2])
+xyz = np.array(modeller.positions.value_in_unit(unit.nanometer))
+solute_center = 0.5 * (xyz[:n_protein_atoms].min(axis=0) + xyz[:n_protein_atoms].max(axis=0))
+shift = np.array(box_center.value_in_unit(unit.nanometer)) - solute_center
+modeller.positions = unit.Quantity([Vec3(*p) for p in (xyz + shift)], unit.nanometer)
+print(f"Sistema transladado em ({shift[0]:.3f}, {shift[1]:.3f}, {shift[2]:.3f}) nm: "
+      f"proteína no centro da caixa")
+
 # ----- Resumo do que foi construído -------------------------------------------
 from collections import Counter
 counts = Counter(res.name for res in modeller.topology.residues())
 n_water = counts.get("HOH", 0)
 ions = {k: v for k, v in counts.items() if k in ("NA", "CL", "K", "LI", "CS", "RB", "BR", "F", "I")}
-box = modeller.topology.getPeriodicBoxVectors()
-box_nm = [v.value_in_unit(unit.nanometer) for v in box]
+box_nm = [v.value_in_unit(unit.nanometer) for v in box_vectors]
 print(f"Átomos da proteína : {n_protein_atoms}")
 print(f"Moléculas de água  : {n_water}")
 print(f"Íons               : {ions}")
@@ -576,7 +631,8 @@ print("Sistema gravado em", solvated_pdb)
 """)
 
 code(r"""
-# Sistema solvatado: proteína em fita, água em linhas finas, íons como esferas, célula unitária.
+# Sistema solvatado: proteína em fita (no centro), água em linhas finas (ligações O–H), íons Na+
+# (azul) e Cl- (verde) como esferas, e a célula unitária desenhada a partir do CRYST1 do PDB.
 show_structure(solvated_pdb, style="cartoon", show_water=True, show_ions=True, show_box=True,
                width=700, height=520)
 """)
@@ -1124,6 +1180,15 @@ md(r"""
     [github.com/openmm/pdbfixer](https://github.com/openmm/pdbfixer). Manual do OpenMM:
     [docs.openmm.org](https://docs.openmm.org/latest/userguide/).
 """)
+
+# ---------------------------------------------------------------------------
+# Numeração sequencial de TODAS as células (markdown e código), para referência
+# em aula/discussão: "[Célula N]" no início de cada uma.
+for n, cell in enumerate(cells, start=1):
+    if cell.cell_type == "markdown":
+        cell.source = f"<sub>[Célula {n}]</sub>\n\n" + cell.source
+    else:
+        cell.source = f"# [Célula {n}]\n" + cell.source
 
 nb.cells = cells
 out = sys.argv[1] if len(sys.argv) > 1 else "openmm_1L2Y_colab.ipynb"

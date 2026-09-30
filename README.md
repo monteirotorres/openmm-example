@@ -28,8 +28,10 @@ inteiro em poucos segundos de MD para validação.
   - [x] Escolha de plataforma (CUDA → OpenCL → CPU) e `openmm.testInstallation`
   - [x] Célula listando os campos de força incluídos no OpenMM (dinâmica) + guia em tabela
   - [x] Download de 1L2Y, extração do modelo 1, visualização
-  - [x] Preparo com PDBFixer com relatório de cada etapa
-  - [x] Montagem do sistema (ff14SB/TIP3P, caixa cúbica, 0,15 M NaCl), verificação de carga
+  - [x] Preparo com PDBFixer com relatório de cada etapa e contagem de H adicionados (H removidos antes, `STRIP_HYDROGENS`)
+  - [x] Montagem do sistema (ff14SB/TIP3P, caixa cúbica, 0,15 M NaCl), sistema centrado na caixa, verificação de carga
+  - [x] Visualização com hidrogênios e água (`keepH=True` no 3Dmol.js), verificada em Chromium headless
+  - [x] Células numeradas (`[Célula N]`)
   - [x] Minimização com energia antes/depois e deslocamento RMS
   - [x] NVT 1 ns com restrições harmônicas nos átomos pesados
   - [x] NPT 5 ns com barostato de Monte Carlo

@@ -2,6 +2,45 @@
 
 Diário do projeto. Entradas mais recentes primeiro. Horários em UTC.
 
+## 2026-09-30 12:20 — Revisão do usuário: numeração, hidrogênios, visualização do sistema
+
+**Pedidos:** (1) numerar as células; (2) "na preparação o n de átomos não muda — os H foram
+realmente adicionados?"; (3) na visualização do sistema solvatado a água não aparece e a
+proteína não está no centro da caixa.
+
+**Diagnóstico (com evidência, não suposição)**
+- (2) 1L2Y é RMN e já traz 150 H. `PDBFixer.addMissingHydrogens` → `Modeller.addHydrogens`
+  mantém H existentes e só acrescenta os que faltam; testei removendo os H (304 → 154 átomos)
+  e o PDBFixer recolocou exatamente 150 H com os mesmos nomes (304). Ou seja, o passo
+  funcionava, mas não era demonstrável no caso RMN.
+- (3) Reproduzi a visualização com Chromium headless (Playwright + 3Dmol.js 2.5.5 inline) e
+  interroguei o viewer por JavaScript: o parser PDB do 3Dmol.js **descarta hidrogênios por
+  padrão** (2459 átomos carregados de 7193); cada água virava um O isolado sem ligações, e o
+  estilo `line` só desenha ligações → água invisível. Descentragem: `Modeller.addSolvent`
+  centra a água no soluto (que estava na origem), enquanto a célula unitária do OpenMM (e o
+  `addUnitCell` do 3Dmol) vai de (0,0,0) aos vetores a,b,c → proteína no canto.
+
+**Correções**
+- (1) Pós-processamento no gerador: toda célula recebe `[Célula N]` (markdown: `<sub>`, código:
+  comentário na 1ª linha). 39 células numeradas.
+- (2) Novo parâmetro `STRIP_HYDROGENS = True` (Seção 0). A Célula 16 remove os H do modelo de
+  RMN (simulando o caso cristalográfico), imprime a composição por elemento antes/depois
+  (`{'C': 98, 'N': 27, 'O': 29}` → `{'C': 98, 'H': 150, 'N': 27, 'O': 29}`), o número de H
+  adicionados (150) e os H ligados ao N-terminal (`H, H2, H3` = NH₃⁺ em pH 7). Texto da Seção 4
+  explica por que a contagem não mudava antes.
+- (3a) `show_structure` passa `{"keepH": True}` a `addModel`, com comentário explicando o
+  comportamento do 3Dmol.js. Água agora aparece como linhas O–H; os H da proteína aparecem como
+  bastões (útil também para a Célula 17, que mostra os H recém-adicionados).
+- (3b) Célula 19 translada o sistema para que o centro da caixa envolvente da proteína coincida
+  com o centro da célula periódica (deslocamento impresso, ~2,1–2,2 nm por eixo). Efeito:
+  centro da proteína em (22,5; 19,5; 20,9) Å numa caixa de 42,6 Å, inclusive após
+  `enforcePeriodicBox` na minimização.
+- Renderizações de verificação (headless): água + caixa + proteína centrada OK; hidrogênios
+  visíveis na proteína preparada OK.
+
+**Re-validação:** notebook completo re-executado em CPU com `QUICK_TEST=True`, 23/23 células
+sem erro; 7232 átomos (2305 águas, 6 Na⁺, 7 Cl⁻), carga 0, densidade NPT → ~1,00 g/mL.
+
 ## 2026-09-29 19:27 — Validação local (CPU, QUICK_TEST) e correções
 
 **Execução ponta a ponta** do notebook com `QUICK_TEST=True` (4 ps NVT + 10 ps NPT) via
