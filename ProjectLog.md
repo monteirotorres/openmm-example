@@ -2,6 +2,22 @@
 
 Diário do projeto. Entradas mais recentes primeiro. Horários em UTC.
 
+## 2026-10-01 — Colab pedia autorização do GitHub: branch `main` criado
+
+**Sintoma:** ao abrir o notebook no Colab, pedido repetido de autorização do GitHub.
+**Causa verificada:** o repositório é público (não precisa de autorização), mas o badge/URL
+apontavam para `main`, e o repositório só tinha o branch `claude/compassionate-goodall-26eyf5`
+(nenhum `main`). Ao não encontrar o arquivo anonimamente, o Colab assume repositório privado e
+pede autorização, que não resolve o 404, logo pede de novo.
+**Correção:** `main` criado a partir do branch de trabalho (mesmo commit `a2563f3`), com
+autorização explícita do usuário ("solucione definitivamente"). Verificado anonimamente:
+`raw.githubusercontent.com/.../main/openmm_1L2Y_colab.ipynb` → HTTP 200 (76 kB) e API
+`contents` → 200. O badge do README passa a funcionar sem autorização.
+**Pendência fora do meu alcance:** o branch padrão do repositório no GitHub continua sendo
+`claude/compassionate-goodall-26eyf5` (as ferramentas desta sessão não alteram configurações do
+repositório). Mudar em *Settings → General → Default branch → main*. Não afeta o Colab, cuja
+URL nomeia `main` explicitamente.
+
 ## 2026-09-30 12:20 — Revisão do usuário: numeração, hidrogênios, visualização do sistema
 
 **Pedidos:** (1) numerar as células; (2) "na preparação o n de átomos não muda — os H foram

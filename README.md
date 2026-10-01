@@ -39,6 +39,7 @@ inteiro em poucos segundos de MD para validação.
   - [x] Animação da trajetória e sobreposição início/fim
   - [x] Seção sobre limites de interpretação e referências
 - [x] Validação local do pipeline completo em CPU (`QUICK_TEST = True`)
+- [x] Notebook disponível em `main` (badge do Colab funciona sem autorização do GitHub)
 - [ ] Validação em GPU no Colab com os parâmetros completos (1 ns NVT + 5 ns NPT)
   - [ ] Registrar velocidade (ns/dia) obtida na T4 e tempo total
   - [ ] Confirmar que `openmm[cuda12]` carrega a plataforma CUDA no Colab atual
